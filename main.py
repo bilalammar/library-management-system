@@ -6,12 +6,13 @@ import sys
 
 class Books:
 
-    def __init__(self, book_id: str, title: str, author: str, isbn: str, quantity: int) -> None:
+    def __init__(self, book_id: str, title: str, author: str, isbn: str, quantity: int, amount_of_times_rented: int) -> None:
         self.book_id = str(book_id)
         self.title = str(title)
         self.author = str(author)
         self.isbn = str(isbn)
         self.quantity = int(quantity) if isinstance(quantity, (int, float)) or (isinstance(quantity, str) and quantity.isdigit()) else 0
+        self.amount_of_times_rented = int(amount_of_times_rented) if isinstance(amount_of_times_rented, (int, float)) or (isinstance(amount_of_times_rented, str) and amount_of_times_rented.isdigit()) else 0
 
     @staticmethod
     def _get_db_connection():
@@ -29,7 +30,8 @@ class Books:
                 title TEXT NOT NULL,
                 author TEXT NOT NULL,
                 isbn TEXT NOT NULL,
-                quantity INTEGER NOT NULL
+                quantity INTEGER NOT NULL,
+                amount_of_times_rented INTEGER NOT NULL
             )
         ''')
         conn.commit()
@@ -43,7 +45,7 @@ class Books:
         row = cursor.fetchone()
         conn.close()
         if row:
-            return Books(row['book_id'], row['title'], row['author'], row['isbn'], row['quantity'])
+            return Books(row['book_id'], row['title'], row['author'], row['isbn'], row['quantity'], row['amount_of_times_rented'])
         return None
 
     @staticmethod
@@ -71,6 +73,7 @@ class Books:
             print(f"Author:   {item['author']}")
             print(f"ISBN:     {item['isbn']}")
             print(f"Stock     {item['quantity']}")
+            print(f"AOTR      {item['amount_of_times_rented']}")
             print("-----------------------------")
         return None
 
@@ -87,14 +90,16 @@ class Books:
                 title = item.get('title', 'NA').capitalize()
                 author = item.get('author', 'NA')
                 isbn = item.get('isbn', 'NA')
-                quantity = item.get('quantity', 'NA')
+                quantity = item.get('quantity', '0')
+                amount_of_times_rented = item.get('amount_of_times_rented', '0')
                 
                 quantity = int(quantity) if isinstance(quantity, (int, float)) or (isinstance(quantity, str) and quantity.isdigit()) else 0
+                amount_of_times_rented = int(amount_of_times_rented) if isinstance(amount_of_times_rented, (int, float)) or (isinstance(amount_of_times_rented, str) and amount_of_times_rented.isdigit()) else 0
 
                 cursor.execute('''
-                    INSERT OR REPLACE INTO books (book_id, title, author, isbn, quantity)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (book_id, title, author, isbn, quantity))
+                    INSERT OR REPLACE INTO books (book_id, title, author, isbn, quantity, amount_of_times_rented)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (book_id, title, author, isbn, quantity, amount_of_times_rented))
             conn.commit()
             conn.close()
         return None
@@ -118,6 +123,69 @@ class Books:
             print(f"\nERROR: Book Id '{book_id}' not found in database.\n")
         conn.close()
         return None
+
+    @staticmethod
+    def add_to_rentee_ammount(book_id: str, disp_log: bool = True) -> None:
+        conn = Books._get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE books SET amount_of_times_rented = amount_of_times_rented + 1 WHERE book_id = ?', (book_id,))
+        conn.commit()
+
+        if cursor.rowcount > 0:
+            cursor.execute('SELECT title FROM books WHERE book_id = ?', (book_id,))
+            book_title = cursor.fetchone()['title']
+            if disp_log: print(f"\nSuccessfully incremented the AOTR of '{book_title}' by one.\n")
+        else:
+            print(f"\nERROR: Book Id '{book_id}' not found in database.\n")
+        conn.close()
+        return None 
+    
+    @staticmethod
+    def get_book_rank_by_stat_n_amount(stat: str, disp_amount: int) -> None:
+        '''
+        # PARMS
+
+        **Stat:** The state by which you want to rank by (title, author, amount_of_times_rented_asc, amount_of_times_rented_desc)
+
+        **Disp_amount:** Amount of results to display
+        '''
+
+        ALLOWED_SORT_COLUMNS = {
+        "title": "title",
+        "author": "author",
+        "amount_of_times_rented_asc": "amount_of_times_rented ASC",
+        "amount_of_times_rented_desc": "amount_of_times_rented DESC"}
+
+        order_by_clause = ALLOWED_SORT_COLUMNS.get(stat, None)
+
+        if order_by_clause is None:
+            # Handle invalid input (e.g., raise an error, use a default sort)
+            print(f"Warning: Invalid sort parameter '{stat}'")
+            return None
+
+
+        conn = Books._get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f'SELECT * FROM books ORDER BY {order_by_clause} LIMIT ?', (disp_amount,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        print("------------Books------------")
+        if not rows:
+            print("No books found in the database.")
+            return
+
+        for item in rows:
+            print("-----------------------------")
+            print(f"Book Id:  {item['book_id']}")
+            print(f"Title:    {item['title']}")
+            print(f"Author:   {item['author']}")
+            print(f"ISBN:     {item['isbn']}")
+            print(f"Stock     {item['quantity']}")
+            print(f"AOTR      {item['amount_of_times_rented']}")
+            print("-----------------------------")
+        return None
+        
 
 class Person:
 
@@ -185,6 +253,7 @@ class Person:
                     self.inventory[book_id] = []
                 self.inventory[book_id].append(book)
                 Books.update_quantity(book_id, book.quantity - 1, False)
+                Books.add_to_rentee_ammount(book_id, False)
                 self._save_inventory()
                 print(f"\n{self.name} borrowed {book.title} successfully.\n")
             else:
@@ -209,4 +278,9 @@ if __name__ == '__main__':
     Books.view(2)
     person1.borrow(2)
     Books.update_quantity(2,15)
-    Books.view(2)
+    Books.add_to_rentee_ammount(1)
+    Books.add_to_rentee_ammount(1)
+    Books.add_to_rentee_ammount(1)
+    Books.add_to_rentee_ammount(2)
+    Books.add_to_rentee_ammount(3)
+    Books.get_book_rank_by_stat_n_amount('amount_of_times_rented_desc',2)

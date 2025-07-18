@@ -2,5 +2,6 @@
 *.env
 *.DS_Store
 *.db
+library.db
 __pychache__
 temp.py
