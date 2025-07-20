@@ -3,5 +3,6 @@
 *.DS_Store
 *.db
 library.db
-__pychache__
+__pycache__
 temp.py
+*.log
